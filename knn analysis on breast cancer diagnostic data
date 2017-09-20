@@ -1,0 +1,49 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from sklearn.datasets import load_breast_cancer
+from sklearn.model_selection import cross_val_score
+from sklearn.model_selection import train_test_split
+from sklearn.neighbors import KNeighborsClassifier
+
+cancer = load_breast_cancer()
+
+# Basic info about dataset
+#print(cancer.DESCR)
+keys = cancer.keys() #dictionary keys
+n = len(cancer['feature_names']) #number of features
+
+# Making pandas dataframes and series
+cancerdf = pd.DataFrame(data=np.c_[cancer.data, cancer.target], columns = cancer['feature_names'].tolist()+['target'])
+total = cancerdf['target'].count()  # total number of cases
+benign = int(cancerdf['target'].sum())  # total number of benign cases (encoded as 1)
+malignant = total-benign   # total number of malignant cases (encoded as 0)
+s = pd.Series(data = [malignant, benign], index = ['malignant', 'benign'])
+
+# Setting up model learning
+X = cancerdf[cancerdf.columns[:-1]]
+y = cancerdf.target
+X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=0)
+
+t = list(range(1,50))
+nn = [x for x in t if x % 2 !=0]
+scores = []
+
+for k in nn:
+    model = KNeighborsClassifier(n_neighbors = k)
+    score = cross_val_score(model, X_train, y_train, cv=10, scoring='accuracy')
+    scores.append(score.mean())
+    
+MSE = [1-x for x in scores]
+optimal_k = nn[MSE.index(min(MSE))]
+print("The optimal number of neighbors is %d" % optimal_k)
+plt.plot(nn, MSE)
+plt.xlabel('Number of Neighbors K')
+plt.ylabel('Misclassification Error')
+plt.show()
+
+knn = KNeighborsClassifier(n_neighbors = optimal_k)
+knn.fit(X_train, y_train)
+knn.predict(X_test)
+accuracy = knn.score(X_test, y_test)
+print("The accuracy of modeling the test set is %f" % accuracy)
