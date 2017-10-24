@@ -1,0 +1,264 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from bs4 import BeautifulSoup
+from urllib2 import urlopen
+import pydotplus
+from sklearn.tree import DecisionTreeRegressor
+from sklearn.tree import export_graphviz
+import graphviz
+from sklearn.cross_validation import *
+from sklearn.feature_selection import VarianceThreshold
+import urllib
+import xml.etree.ElementTree as etree
+import openpyxl
+import time
+
+### Initial scrape of data from website
+base_url = 'http://boardgamegeek.com'
+
+def make_soup(url):
+    html = urlopen(url).read()
+    return BeautifulSoup(html, "lxml")
+
+ranks = []
+titles = []
+game_urls = []
+geek_ratings = []
+avg_ratings = []
+num_voters = []
+class1a = []
+
+for pg in range(1, 819): # max is 819
+    soup = make_soup(base_url + '/browse/boardgame/page/' + str(pg))
+    table = soup.find('table', {'class' : 'collection_table'})
+
+    for row in table.findAll('tr', {'id' : 'row_'}):
+        col = row.findAll('td')
+    
+        rank = int(col[0].get_text())
+        ranks.append(rank)
+
+        title = col[2].find('a').get_text()
+        titles.append(title)
+    
+        url = col[2].find('a').get('href')
+        game_urls.append(url)
+    
+        bgg = float(col[3].get_text())
+        geek_ratings.append(bgg)
+    
+        avg = float(col[4].get_text())
+        avg_ratings.append(avg)
+    
+        num = float(col[5].get_text())
+        num_voters.append(num)
+    
+data = {'Rank' : ranks, 'Game Titles' : titles, 'Geek Rating' : geek_ratings, 
+                'Avg. Rating' : avg_ratings,'# Voters' : num_voters, 'Game Url' : game_urls}
+
+### Each game url in "data" above contains the game ID which can be used to more efficiently scrape data using API.
+### Therefore I have extracted these IDs separately and have saved them to a separate Excel spreadsheet, used below. 
+###########################################################
+
+### More efficient scraping using API
+### create URL
+base = "http://www.boardgamegeek.com/xmlapi2/"
+api1 = "thing?id="
+api2 = "&stats=1"
+
+    
+### initialize lists for loops
+game = []
+var = []
+value = []
+
+gameName = []
+yearPub = []
+usersRated = []
+averageRating = []
+bayesRating = []
+stdDevRating = []
+medianRating = []
+owned = []
+trading = []
+wanting = []
+wishing = []
+numComments = []
+numWeights = []
+avgWeight = []
+
+overallRank = []
+
+top1000 = []
+
+### read in IDs for top 1,000 games to create list to loop through.
+### IDs determined from first part of script
+top1000wb = openpyxl.load_workbook('C:/Users/Bridget/Desktop/bgg stuff/Top1000 - with IDs.xlsx', 'r')
+sheet = top1000wb.get_sheet_by_name("Sheet2")
+sheet.columns[0]
+for cellObj in sheet.columns[0]:
+    top1000.append(cellObj.value)
+
+####################################
+
+floor = 0
+ceiling = 20
+
+### requests to API done in delayed batches of 20 due to throttling
+for iteration in range(0,50):
+
+    for pg in top1000[floor:ceiling]:
+        url = base + api1 + str(pg) + api2
+        response = urllib.urlopen(url)
+        
+        ### parse XML
+        tree = etree.parse(response)
+        root = (tree.getroot())[0] ### actually sets single child of root as root
+        
+        ### retrieve data from XML file
+        linklist = root.findall("link") ### this contains category/mechanic, etc.
+
+        ### set each row to name of game
+        for node in range(0, len(linklist)):
+            game.append(root.find("name").get("value"))
+
+        ### get variable name (e.g., mechanic, category, etc.)    
+        for node in linklist:
+            var.append(node.get("type"))
+            
+        ### actual value for each var    
+        for node in linklist:
+            value.append(node.get("value"))
+            
+        ### separate list containing year published date
+        gameName.append(root.find("name").get("value"))
+        yearPub.append(root.find("yearpublished").get("value"))
+        
+        ### other statistics
+        newRoot = (root.find("statistics"))[0] ### sets new root for easy access to statistics node
+        usersRated.append(newRoot.find("usersrated").get("value"))
+        averageRating.append(newRoot.find("average").get("value"))
+        bayesRating.append(newRoot.find("bayesaverage").get("value"))
+        stdDevRating.append(newRoot.find("stddev").get("value"))
+        medianRating.append(newRoot.find("median").get("value"))
+        owned.append(newRoot.find("owned").get("value"))
+        trading.append(newRoot.find("trading").get("value"))
+        wanting.append(newRoot.find("wanting").get("value"))
+        wishing.append(newRoot.find("wishing").get("value"))
+        numComments.append(newRoot.find("numcomments").get("value"))
+        numWeights.append(newRoot.find("numweights").get("value"))
+        avgWeight.append(newRoot.find("averageweight").get("value"))
+        ### need to go one node deeper for overall rank
+        overallRank.append((newRoot.find("ranks")).find("rank").get("value"))
+        ### category rank???
+    
+    time.sleep(20) ### API throttles you if you make requests too often
+    floor = floor + 20 ### recalc floor for requests in batches of 20
+    ceiling = ceiling + 20 ### recalc ceiling for requests in batches of 20
+        
+        
+  
+### create data frame from lists
+multiData = pd.DataFrame({'Game' : game, 'Variable' : var, 'Value' : value})
+
+### create data frame for Year Published list
+soloData = pd.DataFrame({'Game' : gameName, 'Year Published' : yearPub, 'Users Rated' : usersRated,
+                      'Avg Rating' : averageRating, 'Bayes Rating' : bayesRating, 'StdDev Rating' : stdDevRating,
+                      'Median Rating' : medianRating, 'Owned' : owned, 'Trading' : trading, 'Wanting' : wanting,
+                      'Wishing' : wishing, 'Num Comments' : numComments, 'Num Weights' : numWeights,
+                      'Avg Weight' : avgWeight, 'Overall Ranking' : overallRank})
+      
+      
+#######################################################
+      ### CONVERTING DATA FROM MULTIDATA MATRIX TO SINGLE DATA MATRIX
+      
+mechanicSub = multiData.query('Variable == "boardgamemechanic"') ### subset for boardgamemechanic only
+uniqueListMech = sorted(pd.unique(mechanicSub.Value.ravel()).tolist()) ### finds all unique mechanics
+
+### creates new var columns for each unique mechanic
+for i in range(0, len(uniqueListMech)):
+    soloData[uniqueListMech[i]] = 0
+
+col_names = soloData.columns.values.tolist() ### get list of col_names (mechanics start at 15)
+
+### convert mechanic data into binary variable and place into soloData matrix
+for bgame in range(0, len(soloData)):
+    mechanicSub['bool'] = mechanicSub.Game == soloData.Game[bgame]
+    temp = mechanicSub.query('bool == True')
+    
+    for col in range(15, len(col_names)):
+        if temp['Value'].str.contains(col_names[col]).any():
+            soloData.set_value(bgame, col_names[col], 1)
+        
+
+############
+
+
+categorySub = multiData.query('Variable == "boardgamecategory"') ### subset for boardgamecategory only
+uniqueListCat = sorted(pd.unique(categorySub.Value.ravel()).tolist()) ### finds all unique mechanics
+
+### creates new var columns for each unique category
+for i in range(0, len(uniqueListCat)):
+    soloData[uniqueListCat[i]] = 0
+    
+col_names = soloData.columns.values.tolist() ### get list of col_names
+
+### convert mechanic data into binary variable and place into soloData matrix
+for bgame in range(0, len(soloData)):
+    categorySub['bool'] = categorySub.Game == soloData.Game[bgame]
+    temp = categorySub.query('bool == True')
+    
+    for col in range(15 + len(uniqueListMech), len(col_names)):
+        if temp['Value'].str.contains(col_names[col]).any():
+            soloData.set_value(bgame, col_names[col], 1)
+
+###############
+
+### write to excel file
+multiData.to_excel('C:/Users/Bridget/Desktop/pythonFiles/multiData_02.xlsx', sheet_name='sheet1')
+### write to excel file
+soloData.to_excel('C:/Users/Bridget/Desktop/pythonFiles/soloData_02.xlsx', sheet_name='sheet1')
+
+
+####################
+### Next is the machine learning phase. Started playing with decision tree regressor.
+
+plt.style.use('ggplot')
+
+df = pd.read_excel('Data.xlsx')
+game_names = df['Game']
+game_ratings = df['Bayes Rating']
+df.drop(['Game', 'Bayes Rating'], axis=1, inplace=True)
+features = list(df.columns.values)
+
+dt = DecisionTreeRegressor(max_depth=15)
+
+x = np.array(df)
+y = np.array(game_ratings)
+
+X_train, X_test, y_train, y_test = train_test_split(x, y)
+
+clf= dt.fit(X_train, y_train)
+
+test = pd.DataFrame(dt.feature_importances_, index = features, columns = ['importance']).sort_values('importance', ascending=False)
+
+print('Accuracy of Decision Tree regressor on training set: {:.2f}'
+     .format(clf.score(X_train, y_train)))
+     
+print('Accuracy of Decision Tree regressor on test set: {:.2f}'
+     .format(clf.score(X_test, y_test)))
+     
+cv_scores = cross_val_score(dt, X_train, y_train, cv=5)
+print('Mean cross-validation score (3-fold): {:.3f}'
+     .format(np.mean(cv_scores)))
+
+print test.head(5)
+
+def plot_decision_tree(clf, feature_names):
+    export_graphviz(clf, out_file="adspy_temp.dot", feature_names=feature_names, impurity = True)
+    with open("adspy_temp.dot") as f:
+        dot_graph = f.read()
+        #graph = pydotplus.graphviz.graph_from_dot_data(dot_graph)
+    #return graph.create_png()
+    return graphviz.Source(dot_graph)
