@@ -66,18 +66,17 @@ def answer_four():
     from sklearn.preprocessing import PolynomialFeatures
     from sklearn.linear_model import Lasso, LinearRegression
     from sklearn.metrics.regression import r2_score
+    from sklearn.pipeline import make_pipeline
 
     X_train, X_test, y_train, y_test = train_test_split(x, y, random_state=0)
     linreg = LinearRegression().fit(X_train.reshape(-1,1), y_train)
     linreg_pred = linreg.predict(X_test.reshape(-1,1))
     LinearRegression_R2_test_score = r2_score(linreg_pred, y_test)
     
-    poly = PolynomialFeatures(12)
-    x_poly = poly.fit_transform(x)
-    X_trainpoly, X_testpoly, y_trainpoly, y_testpoly = train_test_split(x_poly, y, random_state=0)
-    regu_linreg = Lasso(alpha=0.01, max_iter=10000).fit(X_trainpoly, y_trainpoly)
-    regu_linreg_pred = regu_linreg.predict(X_testpoly)
-    Lasso_R2_test_score = r2_score(regu_linreg_pred, y_testpoly)
-
+    model = make_pipeline(PolynomialFeatures(12), Lasso(alpha=0.01, max_iter=10000))    
+    model = model.fit(X_train.reshape(-1,1), y_train)
+    pred_test = model.predict(X_test.reshape(-1,1))
+    Lasso_R2_test_score = r2_score(pred_test, y_test)
+    
     return LinearRegression_R2_test_score, Lasso_R2_test_score
 answer_four()
