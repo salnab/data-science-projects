@@ -20,7 +20,6 @@ def answer_two():
     from sklearn.metrics.regression import r2_score
     from sklearn.pipeline import make_pipeline
 
-    x_t = np.linspace(0,10,100)
     R2score_training = []
     R2score_test = []
     
@@ -29,8 +28,8 @@ def answer_two():
         model = model.fit(X_train[:, np.newaxis], y_train)
         pred_train = model.predict(X_train[:, np.newaxis])
         pred_test = model.predict(X_test[:, np.newaxis])
-        R2score_training.append(r2_score(pred_train, y_train))
-        R2score_test.append(r2_score(pred_test, y_test))
+        R2score_training.append(model.score(X_train[:, np.newaxis], y_train))
+        R2score_test.append(model.score(X_test[:, np.newaxis], y_test))
     return np.array(R2score_training), np.array(R2score_test)
 
 
@@ -50,12 +49,10 @@ def answer_three():
     #plt.ylim(-8,1.5)
     #plt.legend(loc=4)
     
-    r2train_max = max(y_train)
-    Overfitting = y_train.index(r2train_max)
     r2train_min = min(y_train)
-    Underfitting_train = y_train.index(r2train_min)
+    Underfitting = y_train.index(r2train_min)
     r2test_min = min(y_test)
-    Underfitting = y_test.index(r2test_min)
+    Overfitting = y_test.index(r2test_min)
     r2test_max = max(y_test)
     Good_Generalization = y_test.index(r2test_max)
     
@@ -68,15 +65,14 @@ def answer_four():
     from sklearn.metrics.regression import r2_score
     from sklearn.pipeline import make_pipeline
 
-    X_train, X_test, y_train, y_test = train_test_split(x, y, random_state=0)
     linreg = LinearRegression().fit(X_train.reshape(-1,1), y_train)
-    linreg_pred = linreg.predict(X_test.reshape(-1,1))
-    LinearRegression_R2_test_score = r2_score(linreg_pred, y_test)
+    #linreg_pred = linreg.predict(X_test.reshape(-1,1))
+    LinearRegression_R2_test_score = linreg.score(X_test.reshape(-1,1), y_test)
     
-    model = make_pipeline(PolynomialFeatures(12), Lasso(alpha=0.01, max_iter=10000))    
-    model = model.fit(X_train.reshape(-1,1), y_train)
-    pred_test = model.predict(X_test.reshape(-1,1))
-    Lasso_R2_test_score = r2_score(pred_test, y_test)
+    #model = make_pipeline(PolynomialFeatures(12), Lasso(alpha=0.01, max_iter=10000))    
+    model = make_pipeline(PolynomialFeatures(12), Lasso(alpha=0.01, max_iter=10000)).fit(X_train.reshape(-1,1), y_train)
+    #pred_test = model.predict(X_test.reshape(-1,1))
+    Lasso_R2_test_score = model.score(X_test.reshape(-1,1), y_test)
     
     return LinearRegression_R2_test_score, Lasso_R2_test_score
 
