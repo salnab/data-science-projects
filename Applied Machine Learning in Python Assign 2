@@ -12,7 +12,7 @@ def answer_one():
         model = model.fit(X_train[:, np.newaxis], y_train)
         predlist.append(model.predict(x_t[:, np.newaxis]))
     return np.array(predlist)
-answer_one()
+
 
 def answer_two():
     from sklearn.linear_model import LinearRegression
@@ -32,7 +32,7 @@ def answer_two():
         R2score_training.append(r2_score(pred_train, y_train))
         R2score_test.append(r2_score(pred_test, y_test))
     return np.array(R2score_training), np.array(R2score_test)
-answer_two()
+
 
 def answer_three():
     
@@ -60,7 +60,7 @@ def answer_three():
     Good_Generalization = y_test.index(r2test_max)
     
     return Underfitting, Overfitting, Good_Generalization
-answer_three()
+
 
 def answer_four():
     from sklearn.preprocessing import PolynomialFeatures
@@ -79,4 +79,57 @@ def answer_four():
     Lasso_R2_test_score = r2_score(pred_test, y_test)
     
     return LinearRegression_R2_test_score, Lasso_R2_test_score
-answer_four()
+
+
+def answer_five():
+    from sklearn.tree import DecisionTreeClassifier
+    
+    clf = DecisionTreeClassifier().fit(X_train2, y_train2)
+    features = X_train2.columns.values.tolist()
+    feat_imp = clf.feature_importances_.tolist()
+    #feat_imp_sort = sorted(feat_imp, reverse=True)
+    feat_imp_index = [b[0] for b in sorted(enumerate(feat_imp), key=lambda i:i[1], reverse=True)]
+    #feat_imp_index = sorted(range(len(feat_imp)), key=lambda k: feat_imp[k], reverse=True)
+    feat_imp_sort = [features[i] for i in feat_imp_index]
+    return feat_imp_sort[:5]
+    
+    
+def answer_six():
+    from sklearn.svm import SVC
+    from sklearn.model_selection import validation_curve
+    import numpy as np
+
+    clf = SVC(kernel = 'rbf', random_state=0)
+    param_range = np.logspace(-4,1,6)
+    training_scores, test_scores = validation_curve(clf, X_subset, y_subset, param_name='gamma', param_range=param_range, scoring='accuracy')
+    training_scores = np.mean(training_scores, axis=1)
+    test_scores = np.mean(test_scores, axis=1)
+    return training_scores, test_scores
+    
+    
+def answer_seven():
+    y = []
+    y = answer_six()
+    y_train = y[0].tolist()
+    y_test = y[1].tolist()
+    gamma = np.logspace(-4,1,6)
+    
+    #import matplotlib.pyplot as plt
+    #%matplotlib notebook
+    #plt.figure(figsize=(10,5))
+    #plt.plot(np.log10(gamma), y_train, 'o', label='training data', markersize=10)
+    #plt.plot(np.log10(gamma), y_test, 'o', label='test data', markersize=10)
+    #plt.ylim(0,1.5)
+    #plt.legend(loc=4)
+    
+    train_min = min(y_train)
+    train_min_index = y_train.index(train_min)
+    Underfitting = gamma[train_min_index]
+    test_min = min(y_test)
+    test_min_index = y_test.index(test_min)
+    Overfitting = gamma[test_min_index]
+    test_max = max(y_test)
+    test_max_index = y_test.index(test_max)
+    Good_Generalization = gamma[test_max_index]
+    
+    return Underfitting, Overfitting, Good_Generalization
