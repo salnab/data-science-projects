@@ -1,20 +1,27 @@
+# -*- coding: utf-8 -*-
+"""
+@author: Bridget Salna
+"""
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from bs4 import BeautifulSoup
 from urllib2 import urlopen
-import pydotplus
+#import pydotplus
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.tree import export_graphviz
 import graphviz
-from sklearn.cross_validation import *
-from sklearn.feature_selection import VarianceThreshold
+from sklearn.cross_validation import train_test_split, cross_val_score
+from sklearn.grid_search import GridSearchCV
 import urllib
 import xml.etree.ElementTree as etree
-import openpyxl
+#import openpyxl
 import time
+from sklearn.linear_model import Lasso, LinearRegression
+#from sklearn.metrics.regression import r2_score
 
-### Initial scrape of data from website
+# Initial scrape of data from website
 base_url = 'http://boardgamegeek.com'
 
 def make_soup(url):
@@ -27,9 +34,9 @@ game_urls = []
 geek_ratings = []
 avg_ratings = []
 num_voters = []
-class1a = []
+game_id = []
 
-for pg in range(1, 819): # max is 819
+for pg in range(1, 147): # max is 819, but games with reliable ratings (ones with enough voters) end at page 146 with game 14539, max range is 147
     soup = make_soup(base_url + '/browse/boardgame/page/' + str(pg))
     table = soup.find('table', {'class' : 'collection_table'})
 
@@ -56,10 +63,43 @@ for pg in range(1, 819): # max is 819
     
 data = {'Rank' : ranks, 'Game Titles' : titles, 'Geek Rating' : geek_ratings, 
                 'Avg. Rating' : avg_ratings,'# Voters' : num_voters, 'Game Url' : game_urls}
+                
+data_df = pd.DataFrame(data)
+data_df.to_excel('C:/Users/Bridget/Desktop/pythonFiles/data_df.xlsx', sheet_name='sheet1')
 
-### Each game url in "data" above contains the game ID which can be used to more efficiently scrape data using API.
+game_id = [row.split('game/')[1].split('/')[0] for row in data['Game Url']] # extracts all of the unique game IDs from their URLs
+game_id_df = pd.DataFrame(game_id)
+game_id_df.to_excel('C:/Users/Bridget/Desktop/pythonFiles/game_ids.xlsx', sheet_name='sheet1')
+
+## Plotting geek rating versus # of voters shows correlation. Somewhat expected because people who feel extremely positive
+## about a game are more likely to vote on it. Games with small # of voters are more open to outlier votes. 
+y_Avg = data['Avg. Rating']
+y_Geek = data['Geek Rating']
+
+## Basic statistics about ratings
+mean_Avg = np.mean(y_Avg)
+median_Avg = np.median(y_Avg)
+std_Avg = np.std(y_Avg)
+print mean_Avg,std_Avg, median_Avg
+plt.hist(y_Avg, edgecolor='black')
+
+mean_Geek = np.mean(y_Geek)
+median_Geek = np.median(y_Geek)
+std_Geek = np.std(y_Geek)
+print mean_Geek,std_Geek, median_Geek
+plt.hist(y_Geek, edgecolor='black')
+
+x_voters = data['# Voters']
+plt.plot(x_voters,y_Avg,'ro')
+plt.xlabel('# of Voters')
+plt.ylabel('Avg. Rating')
+axes = plt.gca()
+#axes.set_xlim([0, 5000])
+plt.show()
+
+
+### The game ID can be used to more efficiently scrape characteristic data using API.
 ### Therefore I have extracted these IDs separately and have saved them to a separate Excel spreadsheet, used below. 
-###########################################################
 
 ### More efficient scraping using API
 ### create URL
@@ -90,17 +130,13 @@ avgWeight = []
 
 overallRank = []
 
-top1000 = []
+ids = []
 
-### read in IDs for top 1,000 games to create list to loop through.
+### read in IDs games to create list to loop through.
 ### IDs determined from first part of script
-top1000wb = openpyxl.load_workbook('C:/Users/Bridget/Desktop/bgg stuff/Top1000 - with IDs.xlsx', 'r')
-sheet = top1000wb.get_sheet_by_name("Sheet2")
-sheet.columns[0]
-for cellObj in sheet.columns[0]:
-    top1000.append(cellObj.value)
-
-####################################
+ids_df = pd.read_excel('C:/Users/Bridget/Desktop/pythonFiles/game_ids1.xlsx', header=0)
+ids = ids_df['ID'].tolist()
+#####################################
 
 floor = 0
 ceiling = 20
@@ -108,7 +144,7 @@ ceiling = 20
 ### requests to API done in delayed batches of 20 due to throttling
 for iteration in range(0,50):
 
-    for pg in top1000[floor:ceiling]:
+    for pg in ids[floor:ceiling]:
         url = base + api1 + str(pg) + api2
         response = urllib.urlopen(url)
         
@@ -143,7 +179,7 @@ for iteration in range(0,50):
         stdDevRating.append(newRoot.find("stddev").get("value"))
         medianRating.append(newRoot.find("median").get("value"))
         owned.append(newRoot.find("owned").get("value"))
-        trading.append(newRoot.find("trading").get("value"))
+        #trading.append(newRoot.find("trading").get("value"))
         wanting.append(newRoot.find("wanting").get("value"))
         wishing.append(newRoot.find("wishing").get("value"))
         numComments.append(newRoot.find("numcomments").get("value"))
@@ -159,44 +195,48 @@ for iteration in range(0,50):
         
         
   
-### create data frame from lists
+#### create data frame from lists
 multiData = pd.DataFrame({'Game' : game, 'Variable' : var, 'Value' : value})
 
-### create data frame for Year Published list
+#### create data frame for Year Published list
 soloData = pd.DataFrame({'Game' : gameName, 'Year Published' : yearPub, 'Users Rated' : usersRated,
                       'Avg Rating' : averageRating, 'Bayes Rating' : bayesRating, 'StdDev Rating' : stdDevRating,
-                      'Median Rating' : medianRating, 'Owned' : owned, 'Trading' : trading, 'Wanting' : wanting,
+                      'Median Rating' : medianRating, 'Owned' : owned, 'Wanting' : wanting,
                       'Wishing' : wishing, 'Num Comments' : numComments, 'Num Weights' : numWeights,
                       'Avg Weight' : avgWeight, 'Overall Ranking' : overallRank})
       
-      
-#######################################################
-      ### CONVERTING DATA FROM MULTIDATA MATRIX TO SINGLE DATA MATRIX
-      
-mechanicSub = multiData.query('Variable == "boardgamemechanic"') ### subset for boardgamemechanic only
-uniqueListMech = sorted(pd.unique(mechanicSub.Value.ravel()).tolist()) ### finds all unique mechanics
+#soloData = pd.DataFrame({'Game' : gameName, 'Year Published' : yearPub, 'Users Rated' : usersRated,
+#                      'Avg Rating' : averageRating, 'Bayes Rating' : bayesRating, 'StdDev Rating' : stdDevRating,
+#                      'Median Rating' : medianRating, 'Owned' : owned, 'Trading' : trading, 'Wanting' : wanting,
+#                      'Wishing' : wishing, 'Num Comments' : numComments, 'Num Weights' : numWeights,
+#                      'Avg Weight' : avgWeight, 'Overall Ranking' : overallRank})      
+########################################################
+#      ### CONVERTING DATA FROM MULTIDATA MATRIX TO SINGLE DATA MATRIX
 
-### creates new var columns for each unique mechanic
+mechanicSub =  multiData[multiData['Variable']=='boardgamemechanic'] ### subset for boardgame mechanic
+uniqueListMech = sorted(mechanicSub.Value.unique().tolist()) ### finds all unique mechanics
+
+#### creates new var columns for each unique mechanic
 for i in range(0, len(uniqueListMech)):
     soloData[uniqueListMech[i]] = 0
 
-col_names = soloData.columns.values.tolist() ### get list of col_names (mechanics start at 15)
+col_names = soloData.columns.values.tolist() ### get list of col_names (mechanics start at 14)
 
-### convert mechanic data into binary variable and place into soloData matrix
+#### convert mechanic data into binary variable and place into soloData matrix
 for bgame in range(0, len(soloData)):
     mechanicSub['bool'] = mechanicSub.Game == soloData.Game[bgame]
     temp = mechanicSub.query('bool == True')
+    #temp = mechanicSub[mechanicSub['bool'] == 'True']    
     
-    for col in range(15, len(col_names)):
+    for col in range(14, len(col_names)):
         if temp['Value'].str.contains(col_names[col]).any():
             soloData.set_value(bgame, col_names[col], 1)
         
 
-############
+#############
 
-
-categorySub = multiData.query('Variable == "boardgamecategory"') ### subset for boardgamecategory only
-uniqueListCat = sorted(pd.unique(categorySub.Value.ravel()).tolist()) ### finds all unique mechanics
+categorySub = multiData[multiData['Variable'] == 'boardgamecategory'] ### subset for boardgamecategory only
+uniqueListCat = sorted(categorySub.Value.unique().tolist()) ### finds all unique categories
 
 ### creates new var columns for each unique category
 for i in range(0, len(uniqueListCat)):
@@ -209,56 +249,137 @@ for bgame in range(0, len(soloData)):
     categorySub['bool'] = categorySub.Game == soloData.Game[bgame]
     temp = categorySub.query('bool == True')
     
-    for col in range(15 + len(uniqueListMech), len(col_names)):
+    for col in range(14 + len(uniqueListMech), len(col_names)):
         if temp['Value'].str.contains(col_names[col]).any():
             soloData.set_value(bgame, col_names[col], 1)
 
 ###############
 
 ### write to excel file
-multiData.to_excel('C:/Users/Bridget/Desktop/pythonFiles/multiData_02.xlsx', sheet_name='sheet1')
+multiData.to_excel('C:/Users/Bridget/Desktop/pythonFiles/multiData_03.xlsx', sheet_name='sheet1')
 ### write to excel file
-soloData.to_excel('C:/Users/Bridget/Desktop/pythonFiles/soloData_02.xlsx', sheet_name='sheet1')
+soloData.to_excel('C:/Users/Bridget/Desktop/pythonFiles/soloData_03.xlsx', sheet_name='sheet1')
 
 
-####################
-### Next is the machine learning phase. Started playing with decision tree regressor.
+#############################################################################
+#### Next is the machine learning phase to fit model to ratings as a function of categories and mechanics
 
-plt.style.use('ggplot')
+game_data = pd.read_excel('C:/Users/Bridget/Desktop/pythonFiles/FullData.xlsx') ## read saved data containing all game info
+game_names = game_data['Game']
+year_pub = game_data['Year Published']
 
-df = pd.read_excel('Data.xlsx')
-game_names = df['Game']
-game_ratings = df['Bayes Rating']
-df.drop(['Game', 'Bayes Rating'], axis=1, inplace=True)
-features = list(df.columns.values)
+#############################
+## Reducing dataset to just the features of category and mechanic (x-values) and creating another dataframe with ratings (y-values)
+game_ratings = game_data['Avg Rating'] # all of the ratings
+#plt.hist(game_ratings, edgecolor='black')
+mean, std = np.mean(game_ratings), np.std(game_ratings)
 
-dt = DecisionTreeRegressor(max_depth=15)
+drop_list = ['Game', 'Bayes Rating', 'Avg Rating', 'Avg Weight', 'Median Rating', 'Num Comments', 'Num Weights', 'Overall Ranking', 'Owned', 'StdDev Rating', 'Trading', 'Users Rated', 'Wanting', 'Wishing', 'Year Published']
+game_data.drop(drop_list, axis=1, inplace=True) ## df now contains all of the boolean features for each game
+features = game_data.columns.values.tolist()
 
-x = np.array(df)
+#############################
+## Looking at plot of rating vs year published
+x_year = year_pub.tolist()
+y_ratings = game_ratings.tolist()
+plt.plot(x_year,y_ratings,'ro')
+axes = plt.gca()
+axes.set_xlim([1950, 2020])
+plt.xlabel('Year')
+plt.ylabel('Avg. Rating')
+plt.show()
+#############################
+## splitting data into training and test sets
+x = np.array(game_data)
 y = np.array(game_ratings)
-
 X_train, X_test, y_train, y_test = train_test_split(x, y)
 
-clf= dt.fit(X_train, y_train)
+##############################################################################
+#First decision tree
+dt_score=[]
+dt_score_test=[]
+feature_importances=[]
+feature_importances_test=[]
 
-test = pd.DataFrame(dt.feature_importances_, index = features, columns = ['importance']).sort_values('importance', ascending=False)
+for n in range(1,30):
+    dt = DecisionTreeRegressor(max_depth=n)
+    model_dt= dt.fit(X_train, y_train)
+    dt_score.append(model_dt.score(X_train, y_train))
+    dt_score_test.append(model_dt.score(X_test, y_test))
+    feature_importances.append(model_dt.feature_importances_)
 
-print('Accuracy of Decision Tree regressor on training set: {:.2f}'
-     .format(clf.score(X_train, y_train)))
-     
-print('Accuracy of Decision Tree regressor on test set: {:.2f}'
-     .format(clf.score(X_test, y_test)))
-     
-cv_scores = cross_val_score(dt, X_train, y_train, cv=5)
-print('Mean cross-validation score (3-fold): {:.3f}'
-     .format(np.mean(cv_scores)))
+dt_score_train_max = max(dt_score)
+dt_score_test_max = max(dt_score_test) # max score of decision tree on test set
+n_plot = np.arange(1,30)
+plt.plot(n_plot,dt_score,'ro', label='training')
+plt.plot(n_plot, dt_score_test,'bo', label='test')
+plt.xlabel('Tree depth')
+plt.ylabel('R2 Score')
+plt.legend(loc='upper left')
+print dt_score_train_max, dt_score_test_max
+max_index = dt_score_test.index(dt_score_test_max) # index where max calue occurs (max_index = n-1 so n=5)
+feature_importances_test = feature_importances[max_index] # extracting feature importances for n=5
+feature_importances_df =  pd.DataFrame(feature_importances_test.tolist(), index = features, columns = ['importance']).sort_values('importance', ascending=False)
+print feature_importances_df[0:3] # Top 3 features in terms of importance for the chosen DT model
 
-print test.head(5)
-
-def plot_decision_tree(clf, feature_names):
-    export_graphviz(clf, out_file="adspy_temp.dot", feature_names=feature_names, impurity = True)
+model_dt_best = DecisionTreeRegressor(max_depth=max_index+1).fit(X_train,y_train)
+def plot_decision_tree(model, feature_names):
+    export_graphviz(model, out_file="adspy_temp.dot", feature_names=feature_names, impurity = True)
     with open("adspy_temp.dot") as f:
         dot_graph = f.read()
         #graph = pydotplus.graphviz.graph_from_dot_data(dot_graph)
     #return graph.create_png()
     return graphviz.Source(dot_graph)
+plot_decision_tree(model_dt_best, features)
+##############################################################################
+# Next linear regression
+linreg = LinearRegression()
+cv_scores = cross_val_score(linreg, X_train, y_train, cv=10)
+print cv_scores.mean(), cv_scores.std()
+cv_pred = cross_val_score(linreg, X_test, y_test, cv=10)
+print cv_pred.mean(), cv_pred.std()
+model_linreg = linreg.fit(X_train, y_train)
+coef = model_linreg.coef_.tolist()
+together = zip(coef, features)
+coef_sort = [i[0] for i in sorted(together)]
+feature_sort = [i[1] for i in sorted(together)]
+print feature_sort[-3:]
+plt.figure(figsize=(20,10))
+labels = feature_sort
+x_coef = range(len(coef_sort))
+plt.bar(x_coef, coef_sort, tick_label=labels)
+plt.xticks(rotation='vertical')
+
+##############################################################################
+# Next lasso regression
+# Using grid search cross validation to optimize accuracy over grid parameter, alpha
+grid_values = {'alpha': [1, 0.1, 0.01, 0.001, 0.0001]}
+model = Lasso()
+grid_lasso = GridSearchCV(model, param_grid=grid_values, cv=10)
+grid_lasso.fit(X_train, y_train)
+best_score = grid_lasso.best_score_
+best_alpha = grid_lasso.best_params_
+print best_alpha['alpha'], best_score
+
+model_lasso = Lasso(alpha=best_alpha['alpha'])
+coef_lasso = model_lasso.fit(X_train, y_train).coef_.tolist()
+together_lasso = zip(coef_lasso, features)
+coef_lasso_sort = [i[0] for i in sorted(together_lasso)]
+feature_lasso_sort = [i[1] for i in sorted(together_lasso)]
+plt.figure(figsize=(20,10))
+labels_lasso = feature_lasso_sort
+x_coef_lasso = range(len(coef_lasso_sort))
+plt.bar(x_coef_lasso, coef_lasso_sort, tick_label=labels_lasso)
+plt.xticks(rotation='vertical')
+print feature_lasso_sort[-5:]
+
+cv_scores_lasso = cross_val_score(model_lasso, X_test, y_test, cv=10)
+coef_lasso = model_lasso.coef_
+print cv_scores_lasso.mean(), cv_scores_lasso.std()
+
+##############################################################################
+
+    
+
+     
+
